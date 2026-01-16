@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Between Drift v1.11</title>
+    <title>Between Drift v1.12</title>
     
     <script>
         window.onerror = function(message, source, lineno, colno, error) {
@@ -713,8 +713,14 @@
             const messagesEndRef = useRef(null);
             const textareaRef = useRef(null);
 
+            // ✅ 关键：处理中文输入法 IME 组词状态，避免误发送/重复发送
+            const isComposingRef = useRef(false);
+
             useEffect(() => {
-                if (editingTitle && titleInputRef.current) { titleInputRef.current.focus(); titleInputRef.current.select(); }
+                if (editingTitle && titleInputRef.current) {
+                    titleInputRef.current.focus();
+                    titleInputRef.current.select();
+                }
             }, [editingTitle]);
 
             useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
@@ -726,16 +732,34 @@
                 setEditingTitle(false);
             };
 
+            const doSend = () => {
+                if (!input.trim()) return;
+                onSendMessage(input, side);
+                setInput('');
+                if (textareaRef.current) textareaRef.current.style.height = 'auto';
+                if (mode === 'auto') setSide(side === 'left' ? 'right' : 'left');
+            };
+
             const handleKeyDown = (e) => {
-                if ((settings.key === 'enter' && e.key === 'Enter' && !e.shiftKey) || (settings.key === 'ctrl_enter' && e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+                // ✅ IME 期间按下 Enter 通常是“上屏/选词”，不能当发送
+                // React: e.isComposing / e.nativeEvent.isComposing
+                // 某些浏览器还会用 keyCode 229 表示 IME
+                const native = e.nativeEvent || {};
+                const isImeNow = isComposingRef.current || e.isComposing || native.isComposing || native.keyCode === 229;
+
+                // 发送快捷键判断
+                const hitEnterSend =
+                    (settings.key === 'enter' && e.key === 'Enter' && !e.shiftKey) ||
+                    (settings.key === 'ctrl_enter' && e.key === 'Enter' && (e.ctrlKey || e.metaKey));
+
+                if (hitEnterSend) {
                     e.preventDefault();
-                    if (!input.trim()) return;
-                    onSendMessage(input, side);
-                    setInput('');
-                    if(textareaRef.current) textareaRef.current.style.height = 'auto';
-                    if (mode === 'auto') setSide(side === 'left' ? 'right' : 'left');
+                    if (isImeNow) return; // ✅ 关键：IME 时不发送
+                    doSend();
+                    return;
                 }
-                
+
+                // 手动模式切边
                 if (mode === 'manual' && e.altKey) {
                     if (e.key === 'ArrowLeft') {
                         e.preventDefault();
@@ -749,11 +773,9 @@
             };
 
             const send = () => {
-                if (!input.trim()) return;
-                onSendMessage(input, side);
-                setInput('');
-                if(textareaRef.current) textareaRef.current.style.height = 'auto';
-                if (mode === 'auto') setSide(side === 'left' ? 'right' : 'left');
+                // 点击发送按钮时，一般已经不是 composing 状态；但保险起见也防一下
+                if (isComposingRef.current) return;
+                doSend();
             };
 
             const handleInputChange = (e) => {
@@ -767,32 +789,44 @@
                     <div className="flex-1 flex flex-col bg-card-main border-2 border-black dark:border-white rounded-xl-card overflow-hidden shadow-2xl relative">
                         <div className="h-16 flex items-center dark:border-white flex items-center justify-between px-6 z-10 shrink-0 bg-card-main">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setShowSidebar(true)} className="md:hidden icon-btn-lite"><Icons.Menu size={24}/></button>
+                                <button onClick={() => setShowSidebar(true)} className="md:hidden icon-btn-lite"><Icons.Menu size={24} /></button>
                                 <div className="flex items-center gap-2 group min-w-[150px]">
                                     {editingTitle ? (
-                                        <input ref={titleInputRef} defaultValue={activeSession.title} onBlur={handleRename} onKeyDown={(e) => e.key === 'Enter' && handleRename(e)} className="font-black text-lg md:text-xl bg-transparent border-b-2 border-black dark:border-white outline-none text-black dark:text-white w-full" />
+                                        <input
+                                            ref={titleInputRef}
+                                            defaultValue={activeSession.title}
+                                            onBlur={handleRename}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleRename(e)}
+                                            className="font-black text-lg md:text-xl bg-transparent border-b-2 border-black dark:border-white outline-none text-black dark:text-white w-full"
+                                        />
                                     ) : (
-                                        <div onDoubleClick={() => setEditingTitle(true)} className="font-normal text-lg md:text-xl truncate cursor-text hover:bg-gray-100 dark:hover:bg-gray-800 px-2 rounded -ml-2 transition-colors decoration-2 underline-offset-4 decoration-black dark:decoration-white select-none max-w-[200px] text-[#8A8A8A] dark:text-white" title="Double click to rename">{activeSession.title}</div>
+                                        <div
+                                            onDoubleClick={() => setEditingTitle(true)}
+                                            className="font-normal text-lg md:text-xl truncate cursor-text hover:bg-gray-100 dark:hover:bg-gray-800 px-2 rounded -ml-2 transition-colors decoration-2 underline-offset-4 decoration-black dark:decoration-white select-none max-w-[200px] text-[#8A8A8A] dark:text-white"
+                                            title="Double click to rename"
+                                        >
+                                            {activeSession.title}
+                                        </div>
                                     )}
                                 </div>
                             </div>
                             <div className="flex items-center gap-3">
                                 <ModeSelector mode={mode} setMode={setMode} isOpen={showModeDropdown} setIsOpen={setShowModeDropdown} t={t} />
-                                <button onClick={onExport} className="icon-btn-lite" title={t.export}><Icons.Download size={22}/></button>
+                                <button onClick={onExport} className="icon-btn-lite" title={t.export}><Icons.Download size={22} /></button>
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 neu-scroll">
                             {messages.map(m => (
                                 <div key={m.id} className={`flex w-full ${m.side === 'right' ? 'justify-end' : 'justify-start'}`}>
-                                    <MessageBubble 
-                                        message={m} 
+                                    <MessageBubble
+                                        message={m}
                                         onUpdate={onUpdateMessage}
                                         onRequestDelete={onRequestDeleteMessage}
                                     />
                                 </div>
                             ))}
-                            <div ref={messagesEndRef}/>
+                            <div ref={messagesEndRef} />
                         </div>
 
                         <div className="p-4 md:p-6 bg-transparent pointer-events-none">
@@ -803,10 +837,29 @@
                                         <button onClick={() => setSide('right')} className={`px-6 py-2 rounded-full font-bold text-sm transition-all border-0 ${side === 'right' ? 'bg-theme-main text-theme-text shadow-md' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`} title="快捷键: Alt + →">{t.right}</button>
                                     </div>
                                 </div>
+
                                 <div className="neu-input border-2 border-black dark:border-white rounded-[30px] p-2 flex items-end gap-2 bg-white dark:bg-gray-800">
-                                    <textarea ref={textareaRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder={`${side === 'right' ? t.right : t.left}...`} className="w-full bg-transparent border-none outline-none p-3 max-h-32 min-h-[50px] resize-none text-black dark:text-white placeholder-gray-400 font-medium" rows={1} />
-                                    <button onClick={send} disabled={!input.trim()} className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border-2 border-black dark:border-white transition-colors ${input.trim() ? 'bg-theme-main text-theme-text' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}><Icons.Send size={20}/></button>
+                                    <textarea
+                                        ref={textareaRef}
+                                        value={input}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyDown}
+                                        // ✅ 关键：跟踪 IME 组词状态
+                                        onCompositionStart={() => { isComposingRef.current = true; }}
+                                        onCompositionEnd={() => { isComposingRef.current = false; }}
+                                        placeholder={`${side === 'right' ? t.right : t.left}...`}
+                                        className="w-full bg-transparent border-none outline-none p-3 max-h-32 min-h-[50px] resize-none text-black dark:text-white placeholder-gray-400 font-medium"
+                                        rows={1}
+                                    />
+                                    <button
+                                        onClick={send}
+                                        disabled={!input.trim()}
+                                        className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border-2 border-black dark:border-white transition-colors ${input.trim() ? 'bg-theme-main text-theme-text' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+                                    >
+                                        <Icons.Send size={20} />
+                                    </button>
                                 </div>
+
                                 <div className="text-center mt-2">
                                     {mode === 'auto' && <span className="inline-block bg-theme-main text-theme-text border-2 border-black px-2 py-0.5 text-xs font-bold rounded">AUTO MODE ACTIVE</span>}
                                 </div>
@@ -816,7 +869,7 @@
                 </div>
             );
         };
-
+        
         function App() {
             const makeId = () => (window.crypto && crypto.randomUUID)? crypto.randomUUID(): `${Date.now()}-${Math.random().toString(16).slice(2)}`;
             const sanitizeFilename = (name) => {
