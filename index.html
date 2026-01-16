@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Between Drift v1.1</title>
+    
+    <script>
+        window.onerror = function(message, source, lineno, colno, error) {
+            const errorDiv = document.getElementById('global-error');
+            if (errorDiv) {
+                errorDiv.style.display = 'flex';
+                document.getElementById('error-msg').innerText = `Error: ${message}\nLine: ${lineno}`;
+            }
+            console.error(error);
+        };
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        :root {
+            /* 1. 全局背景 */
+            --bg-color: #111111; 
+            
+            /* 修改：将背景色从纯白 #ffffff 改为 #f2f2f2，增加质感 */
+            --card-bg: #f2f2f2;
+            --primary-border: 2px solid #111;
+            --primary-color: #333333; 
+            --primary-color-hover: #000000;
+            --text-on-primary: #ffffff;
+            --pixel-green: #95ec69;
+            --pixel-orange: #FF6600; 
+            --radius-l: 16px;
+            --font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+            /* --- Deep Thought Mode Animation Parameters --- */
+            /* 气泡生长：800ms，使用 iOS 风格的顺滑曲线 */
+            --anim-bubble-duration: 0.8s;
+            --curve-ios: cubic-bezier(0.16, 1, 0.3, 1);
+            
+            /* 文字显现：1000ms，Step 模式不需要曲线(linear) */
+            --anim-text-duration: 1.0s;
+            --anim-text-delay: 0s;
+        }
+
+        .dark {
+            --bg-color: #000000;
+            --card-bg: #1a1a1a;
+            --primary-border: 2px solid #fff;
+            --primary-color: #ffffff; 
+            --primary-color-hover: #e0e0e0;
+            --text-on-primary: #000000;
+        }
+
+        body { 
+            margin: 0; overflow: hidden; font-family: var(--font-main); 
+            background-color: var(--bg-color); color: #fff;
+            transition: background-color 0.3s ease;
+        }
+        
+        /* 基础组件 */
+        .neu-card { background: var(--card-bg); border: var(--primary-border); border-radius: var(--radius-l); color: #111; }
+        .dark .neu-card { color: #fff; }
+        
+        /* 按钮：强制静止，移除所有可能的位移 */
+        .neu-btn { 
+            border: var(--primary-border); 
+            transition: background-color 0.15s, color 0.15s, border-color 0.15s; 
+            
+            /* 核心修改：强制移除所有 Transform 和位移 */
+            transform: none !important; 
+            -webkit-transform: none !important;
+            box-shadow: none !important; /* 防止阴影变化造成视觉位移 */
+            margin: 0 !important;
+            user-select: none; 
+            -webkit-tap-highlight-color: transparent; /* 移除移动端点击高亮 */
+        }
+        
+        /* 强制覆盖 active/hover/focus 状态 */
+        .neu-btn:hover, .neu-btn:active, .neu-btn:focus {
+            transform: none !important;
+            -webkit-transform: none !important;
+            top: 0 !important;
+            left: 0 !important;
+            position: relative; /* 锁定定位 */
+        }
+        
+        /* 侧边栏按钮 */
+        .sidebar-btn { 
+            border: 2px solid transparent; 
+            color: #888; 
+            transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+        }
+        .sidebar-btn:hover { color: #fff; background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+        
+        /* 选中项 */
+        .session-item.active { 
+            background-color: #000; 
+            color: var(--pixel-green); 
+            border: 2px solid var(--pixel-green); 
+            font-weight: 900; 
+            box-shadow: 0 0 10px rgba(149, 236, 105, 0.1); 
+        }
+        .session-item.active input {
+            color: var(--pixel-green);
+            border-bottom-color: var(--pixel-green);
+        }
+
+        /* 图标按钮 */
+        .icon-btn-lite { 
+            background: transparent; border: none; color: #666; border-radius: 50%; padding: 8px; 
+            transition: background-color 0.15s, color 0.15s; 
+            display: inline-flex; align-items: center; justify-content: center; cursor: pointer; 
+        }
+        .icon-btn-lite:hover { background-color: rgba(0,0,0,0.05); color: #000; }
+        .dark .icon-btn-lite { color: #aaa; }
+        .dark .icon-btn-lite:hover { background-color: rgba(255,255,255,0.1); color: #fff; }
+
+        .sidebar-footer-btn { color: #666; }
+        .sidebar-footer-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+        /* 像素加号 */
+        .pixel-plus { position: relative; width: 16px; height: 16px; margin-right: 10px; flex-shrink: 0; }
+        .pixel-plus::before, .pixel-plus::after { content: ''; position: absolute; background-color: var(--pixel-green); border-radius: 0; }
+        .pixel-plus::before { top: 6px; left: 0; width: 100%; height: 4px; }
+        .pixel-plus::after { left: 6px; top: 0; height: 100%; width: 4px; }
+
+        /* 新建按钮：实心 */
+        .btn-pixel-block { 
+            background-color: #000; color: #fff; border: 2px solid #fff; border-radius: 12px; 
+            transition: background-color 0.15s, border-color 0.15s; 
+        }
+        .btn-pixel-block:hover { background-color: #222; border-color: var(--pixel-green); }
+
+        /* 导入按钮：空心 */
+        .btn-pixel-outline { 
+            background-color: transparent; border: 2px solid #444; color: #666; border-radius: 12px; 
+            transition: border-color 0.15s, color 0.15s, background-color 0.15s; 
+        }
+        .btn-pixel-outline:hover { border-color: #fff; color: #fff; background-color: rgba(255,255,255,0.1); }
+
+        /* 气泡 */
+        .neu-bubble { 
+            border: var(--primary-border); 
+            border-radius: var(--radius-l); 
+            padding: 12px 16px; 
+            max-width: 85%; 
+            position: relative; 
+            word-break: break-word;
+            /* 增加 cursor: text 提示用户这是文本 */
+            cursor: text;
+            /* 修复：保留换行符和空白 */
+            white-space: pre-wrap;
+            /* 动效性能优化 */
+            will-change: transform, opacity;
+        }
+        .neu-bubble.left { background: var(--card-bg); color: #000; border-top-left-radius: 2px; margin-right: auto; font-weight: 300; border-width: 1.5px;}
+        .dark .neu-bubble.left { color: #fff; }
+        .neu-bubble.right { background: var(--primary-color); color: #D9D2C5; border-top-right-radius: 2px; margin-left: auto; font-weight: 300; }
+
+        /* --- Deep Thought Animation Styles --- */
+        
+        /* 1. 气泡定向生长 (Pop) */
+        @keyframes popIn {
+            0% { opacity: 0; transform: scale(0.9) translateY(10px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .anim-bubble-pop {
+            animation: popIn var(--anim-bubble-duration) var(--curve-ios) forwards;
+        }
+        /* 设置变形原点，让气泡从角落长出来 */
+        .anim-bubble-pop.left { transform-origin: bottom left; }
+        .anim-bubble-pop.right { transform-origin: bottom right; }
+
+        /* 2. 文字两帧跳变 (Step) */
+        @keyframes textStepIn {
+            0% { opacity: 0; }
+            1% { opacity: 0.5; }   /* 瞬间跳到 50% */
+            50% { opacity: 0.5; }  /* 保持半透明状态 */
+            51% { opacity: 1; }    /* 瞬间跳到 100% */
+            100% { opacity: 1; }
+        }
+        .text-content {
+            display: inline-block; /* 必须 block 化才能应用 opacity */
+            opacity: 0; /* 初始不可见 */
+            width: 100%; /* 确保占满气泡宽度 */
+        }
+        .anim-text-step {
+            animation: textStepIn var(--anim-text-duration) linear forwards;
+            animation-delay: var(--anim-text-delay);
+        }
+
+        /* 输入框容器 */
+        .neu-input { 
+        border-width: 0px !important; /* 将 2px 改为 4px 或你需要的厚度 */
+        border-style: solid;
+        border-color: #ffffff !important;}
+
+        /* 适配暗黑模式 */
+        .dark .neu-input {
+            border-color: #fff; /* 确保暗黑模式下边框可见 */}
+
+        /* 动画 */
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .animate-popover { animation: scaleIn 0.15s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .animate-fade-in { animation: fadeIn 0.15s ease-out forwards; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .neu-scroll::-webkit-scrollbar { width: 8px; }
+        .neu-scroll::-webkit-scrollbar-track { background: transparent; }
+        .neu-scroll::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 4px; }
+        
+        /* 三点菜单的样式 */
+        .neu-context-menu {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            margin-top: 4px;
+            width: 140px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 8px;
+            box-shadow: 4px 4px 0px 0px rgba(0,0,0,1);
+            z-index: 50;
+            overflow: hidden;
+            transform-origin: top right;
+            animation: scaleIn 0.1s ease-out;
+        }
+        .dark .neu-context-menu {
+            background: #1a1a1a;
+            border-color: #fff;
+            box-shadow: 4px 4px 0px 0px rgba(255,255,255,1);
+        }
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.1s;
+            color: #333;
+        }
+        .dark .menu-item { color: #ddd; }
+        .menu-item:hover {
+            background: #000;
+            color: var(--pixel-green);
+        }
+        .dark .menu-item:hover {
+            background: #fff;
+            color: #000;
+        }
+        .menu-item.danger:hover {
+            background: #ff4d4f;
+            color: #fff;
+        }
+    </style>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'theme-main': 'var(--primary-color)',
+                        'theme-hover': 'var(--primary-color-hover)',
+                        'theme-text': 'var(--text-on-primary)',
+                        'bg-main': 'var(--bg-color)',
+                        'card-main': 'var(--card-bg)',
+                        'pixel-green': 'var(--pixel-green)',
+                        'pixel-orange': 'var(--pixel-orange)',
+                    },
+                    borderRadius: {
+                        'xl-card': '32px',
+                    },
+                    boxShadow: {
+                        'brutal': '4px 4px 0px 0px rgba(0,0,0,1)',
+                        'brutal-dark': '4px 4px 0px 0px rgba(255,255,255,1)',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="global-error" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.9); color:#fff; z-index:99999; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center;">
+        <h1 style="font-size:32px; font-weight:900; margin-bottom:20px; border:2px solid #fff; padding:10px 30px;">SYSTEM FAILURE</h1>
+        <pre id="error-msg" style="background:#222; padding:20px; border-radius:8px; margin-bottom:30px; max-width:100%; overflow:auto;"></pre>
+        <button onclick="localStorage.clear(); location.reload()" style="background:#ff6b6b; color:#000; font-weight:bold; padding:15px 30px; border:2px solid #fff; cursor:pointer; font-size:18px;">EMERGENCY RESET</button>
+    </div>
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        const Icon = ({ path, size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>{path}</svg>
+        );
+        const Icons = {
+            Trash: (p) => <Icon {...p} path={<><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></>} />,
+            Settings: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></>} />,
+            Menu: (p) => <Icon {...p} path={<><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></>} />,
+            X: (p) => <Icon {...p} path={<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>} />,
+            Send: (p) => <Icon {...p} size={24} path={<><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></>} />,
+            Download: (p) => <Icon {...p} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></>} />,
+            Upload: (p) => <Icon {...p} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>} />,
+            ChevronDown: (p) => <Icon {...p} path={<polyline points="6 9 12 15 18 9"/>} />,
+            Globe: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></>} />,
+            Sun: (p) => <Icon {...p} path={<><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></>} />,
+            Moon: (p) => <Icon {...p} path={<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>} />,
+            Keyboard: (p) => <Icon {...p} path={<><rect x="2" y="4" width="20" height="16" rx="2" ry="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="14" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="6" y1="16" x2="6" y2="16"/><line x1="10" y1="16" x2="14" y2="16"/><line x1="18" y1="16" x2="18" y2="16"/></>} />,
+            Edit: (p) => <Icon {...p} size={16} path={<><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></>} />,
+            AlertTriangle: (p) => <Icon {...p} path={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>} />,
+            // 新增图标
+            Pin: (p) => <Icon {...p} size={16} path={<><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2c-.55 0-1.05.22-1.41.59l-.03.03c-.37.36-.59.86-.59 1.41 0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59.55 0 1.05-.22 1.41-.59.38-.38.59-.88.59-1.41s-.21-1.04-.56-1.45z"/><path d="M12 13l-4 4"/><path d="M12 2L2 12"/><path d="M7 13L2 18"/></>} />, // 使用简易的 Push Pin 风格，或者用下面的图钉
+            PinSimple: (p) => <Icon {...p} size={16} path={<><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></>} />,
+            More: (p) => <Icon {...p} size={18} path={<><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></>} />,
+        };
+
+        const DICT = {
+            zh: { 
+                appTitle: "Between", newChat: "新建思考", import: "恢复/导入",
+                manualTitle: "手动控制", manualDesc: "手动切换气泡方向 (Alt/Opt + ←/→)，掌控对话节奏", 
+                autoTitle: "心流模式", autoDesc: "自动交替发言，一问一答激发心流", 
+                left: "回答 / 反馈", right: "提问 / 思考", 
+                placeholder: "在此输入想法...", send: "发送", settings: "系统设置", deleteConfirm: "永久删除此会话？", rename: "重命名", export: "导出MD", theme: "界面风格", language: "语言选择", sendKey: "发送快捷键", light: "明亮", dark: "暗黑", enter: "Enter", ctrlEnter: "Ctrl + Enter", deleteTitle: "确认删除", deleteMsg: "此操作不可逆，确定要删除吗？", cancel: "再想想", confirm: "确认删除",
+                resetTitle: "重置所有数据", resetMsg: "这将清除所有聊天记录并恢复出厂设置。确定吗？", reset: "重置所有数据",
+                deleteMsgTitle: "删除消息", deleteMsgConfirm: "确定要删除这条消息吗？此操作无法撤销。",
+                // 菜单
+                pin: "置顶会话", unpin: "取消置顶", delete: "删除会话"
+            },
+            en: { 
+                appTitle: "Between", newChat: "New Session", import: "Import",
+                manualTitle: "Manual Control", manualDesc: "Manually toggle sides (Alt/Opt + ←/→) to control flow", 
+                autoTitle: "Flow State", autoDesc: "Auto-switching for immersive thinking", 
+                left: "Answer / Reply", right: "Ask / Think", 
+                placeholder: "Type thoughts here...", send: "Send", settings: "System Set", deleteConfirm: "Delete permanently?", rename: "Rename", export: "Export MD", theme: "UI Style", language: "Language", sendKey: "Send Key", light: "Light", dark: "Dark", enter: "Enter", ctrlEnter: "Ctrl + Enter", deleteTitle: "Confirm Deletion", deleteMsg: "This action is irreversible. Destroy this Mind Space?", cancel: "Cancel", confirm: "Destroy",
+                resetTitle: "Reset All Data", resetMsg: "This will clear all data and restore factory settings. Sure?", reset: "Reset All Data",
+                deleteMsgTitle: "Delete Message", deleteMsgConfirm: "Delete this message? This action cannot be undone.",
+                pin: "Pin Chat", unpin: "Unpin Chat", delete: "Delete Chat"
+            },
+            ja: { 
+                appTitle: "Between", newChat: "新規思考", import: "インポート",
+                manualTitle: "手動制御", manualDesc: "手動で切り替えて (Alt/Opt + ←/→) ペースを制御", 
+                autoTitle: "フロー状態", autoDesc: "自動切り替えで没入感を高める", 
+                left: "回答 / 返信", right: "質問 / 思考", 
+                placeholder: "ここに入力...", send: "送信", settings: "設定", deleteConfirm: "完全に削除しますか？", rename: "名前変更", export: "出力", theme: "テーマ", language: "言語", sendKey: "送信キー", light: "ライト", dark: "ダーク", enter: "Enter", ctrlEnter: "Ctrl + Enter", deleteTitle: "削除確認", deleteMsg: "この操作は取り消せません。本当に削除しますか？", cancel: "キャンセル", confirm: "削除する",
+                resetTitle: "全データリセット", resetMsg: "すべてのデータが消去されます。よろしいですか？", reset: "全データをリセット",
+                deleteMsgTitle: "メッセージを削除", deleteMsgConfirm: "このメッセージを削除しますか？この操作は取り消せません。",
+                pin: "固定する", unpin: "固定解除", delete: "削除する"
+            }
+        };
+
+        // 扁平、极简、专业风格的模态框
+        const ProfessionalModal = ({ title, message, onConfirm, onCancel, confirmText, cancelText, isDanger=false }) => (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/20 backdrop-blur-[2px] animate-fade-in" onClick={onCancel}>
+                <div className="w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-lg shadow-2xl border border-gray-100 dark:border-gray-800 p-6 transform transition-all scale-100" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2 font-sans tracking-tight">{title}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 leading-relaxed font-sans">{message}</p>
+                    <div className="flex justify-end gap-3">
+                        <button 
+                            onClick={onCancel} 
+                            className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors"
+                        >
+                            {cancelText}
+                        </button>
+                        <button 
+                            onClick={onConfirm} 
+                            className={`px-4 py-2 text-sm font-medium text-white rounded-md shadow-sm transition-colors ${isDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-black hover:bg-gray-800 dark:bg-white dark:text-black'}`}
+                        >
+                            {confirmText}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const DeleteModal = ({ onClose, onConfirm, t }) => {
+            useEffect(() => {
+                const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, [onClose]);
+
+            return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in" onClick={onClose}>
+                    <div className="w-full max-w-sm bg-white dark:bg-[#1a1a1a] border-2 border-black dark:border-white shadow-brutal dark:shadow-brutal-dark p-6 md:p-8 animate-popover relative rounded-2xl" onClick={e => e.stopPropagation()}>
+                        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-black dark:hover:text-white transition-colors">
+                            <Icons.X size={20} />
+                        </button>
+                        
+                        <div className="text-center mb-6">
+                            <div className="flex justify-center mb-4">
+                                <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-full border-2 border-transparent">
+                                    <Icons.Trash size={32} className="text-pixel-orange" />
+                                </div>
+                            </div>
+                            <h3 className="text-xl font-black text-black dark:text-white uppercase tracking-wider mb-2">{t.deleteTitle}</h3>
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400 leading-relaxed max-w-[90%] mx-auto">{t.deleteMsg}</p>
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row gap-3">
+                            <button onClick={onClose} className="flex-1 py-2.5 px-4 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 font-bold uppercase tracking-wider rounded-lg hover:border-black dark:hover:border-white hover:text-black dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-800 transition-all text-xs sm:text-sm">
+                                {t.cancel}
+                            </button>
+                            <button onClick={onConfirm} className="flex-1 py-2.5 px-4 bg-pixel-orange border-2 border-pixel-orange text-white font-bold uppercase tracking-wider rounded-lg hover:bg-[#e65c00] hover:border-[#e65c00] shadow-sm transition-all text-xs sm:text-sm">
+                                {t.confirm}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const SettingsPopover = ({ settings, setSettings, onClose, t }) => (
+            <div className="absolute bottom-full left-4 mb-4 w-64 neu-card z-50 p-5 shadow-brutal dark:shadow-brutal-dark origin-bottom-left animate-popover bg-white dark:bg-gray-900 border-2 border-black dark:border-white">
+                <div className="flex justify-between items-center mb-4 border-b-2 border-gray-100 dark:border-gray-700 pb-2">
+                    <span className="font-black text-sm uppercase tracking-wider text-gray-400 dark:text-gray-500">{t.settings}</span>
+                    <button onClick={onClose} className="hover:text-red-500 text-black dark:text-white"><Icons.X size={16}/></button>
+                </div>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500"><Icons.Globe size={14} className="inline mr-1"/>{t.language}</span>
+                        <div className="flex gap-2 text-xs font-bold">
+                            {['zh','en','ja'].map(l => (
+                                <button key={l} onClick={() => setSettings({...settings, lang: l})} className={`${settings.lang === l ? 'text-black dark:text-white underline decoration-2 decoration-theme-main' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300'}`}>{l.toUpperCase()}</button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-500"><Icons.Sun size={14} className="inline mr-1"/>{t.theme}</span>
+                        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-full p-1 border border-gray-200 dark:border-gray-600">
+                            <button onClick={() => setSettings({...settings, theme: 'light'})} className={`p-1.5 rounded-full transition-all ${settings.theme === 'light' ? 'bg-white text-black shadow-sm' : 'text-gray-400'}`}><Icons.Sun size={14}/></button>
+                            <button onClick={() => setSettings({...settings, theme: 'dark'})} className={`p-1.5 rounded-full transition-all ${settings.theme === 'dark' ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-400'}`}><Icons.Moon size={14}/></button>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <span className="text-xs font-bold text-gray-500 block"><Icons.Keyboard size={14} className="inline mr-1"/>{t.sendKey}</span>
+                        <div className="flex flex-col gap-1.5">
+                            {[{val: 'ctrl_enter', label: 'Ctrl + Enter'}, {val: 'enter', label: 'Enter'}].map(k => (
+                                <label key={k.val} className="flex items-center gap-2 cursor-pointer group">
+                                    <div className={`w-3 h-3 rounded-full border-2 flex items-center justify-center ${settings.key === k.val ? 'border-black dark:border-white' : 'border-gray-300'}`}>
+                                        {settings.key === k.val && <div className="w-1.5 h-1.5 rounded-full bg-theme-main"></div>}
+                                    </div>
+                                    <span className={`text-xs font-bold ${settings.key === k.val ? 'text-black dark:text-white' : 'text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300'}`}>{k.label}</span>
+                                    <input type="radio" className="hidden" checked={settings.key === k.val} onChange={() => setSettings({...settings, key: k.val})} />
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="pt-3 border-t border-gray-100 dark:border-gray-700 text-center">
+                        <button onClick={() => { if(confirm(t.resetMsg)) { localStorage.clear(); location.reload(); }}} className="text-[10px] text-red-400 hover:text-red-600 font-bold uppercase tracking-widest hover:underline">{t.reset}</button>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const ModeSelector = ({ mode, setMode, isOpen, setIsOpen, t }) => (
+            <div className="relative">
+                <button onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }} className="neu-btn px-3 py-1.5 rounded-lg bg-theme-main text-theme-text text-sm border-2 border-black flex items-center gap-1.5">
+                    {mode === 'manual' ? t.manualTitle : t.autoTitle} <Icons.ChevronDown size={16} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`}/>
+                </button>
+                {isOpen && (
+                    <>
+                        <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
+                        <div className="absolute right-0 top-full mt-2 w-72 neu-card z-20 overflow-hidden shadow-brutal border-2 border-black dark:border-white bg-white dark:bg-gray-900">
+                            {['manual', 'auto'].map(m => (
+                                <div key={m} onClick={() => { setMode(m); setIsOpen(false); }} className={`p-4 cursor-pointer border-b border-gray-200 dark:border-gray-700 last:border-0 transition-colors ${mode === m ? 'bg-gray-50 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}>
+                                    <div className="font-black text-base text-black dark:text-white mb-1 flex items-center gap-2">
+                                        {mode === m && <div className="w-2 h-2 rounded-full bg-theme-main"></div>}
+                                        {m === 'manual' ? t.manualTitle : t.autoTitle}
+                                    </div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 font-medium leading-relaxed">
+                                        {m === 'manual' ? t.manualDesc : t.autoDesc}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+
+        const Sidebar = ({ sessions, activeId, setActiveId, onCreateSession, onDeleteSession, onRenameSession, onImportSession, onTogglePin, settings, setSettings, showSidebar, setShowSidebar, t }) => {
+            const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [openMenuId, setOpenMenuId] = useState(null); // Track open menu
+            const editInputRef = useRef(null);
+            const fileInputRef = useRef(null);
+            const menuRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (menuRef.current && !menuRef.current.contains(e.target)) {
+                        setOpenMenuId(null);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            useEffect(() => {
+                if (editingId && editInputRef.current) {
+                    editInputRef.current.focus();
+                    editInputRef.current.select();
+                }
+            }, [editingId]);
+
+            const handleFinishRename = (id, newTitle) => {
+                if (newTitle.trim()) {
+                    onRenameSession(id, newTitle.trim());
+                }
+                setEditingId(null);
+            };
+
+            const handleFileChange = (e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                    onImportSession(file);
+                    e.target.value = null; 
+                }
+            };
+
+            // 排序：Pinned first, then time
+            const sortedSessions = useMemo(() => {
+                return [...sessions].sort((a, b) => {
+                    if (a.isPinned !== b.isPinned) {
+                        return a.isPinned ? -1 : 1;
+                    }
+                    return b.timestamp - a.timestamp;
+                });
+            }, [sessions]);
+
+            return (
+                <div className={`absolute inset-y-0 left-0 z-30 w-72 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 flex flex-col ${showSidebar ? 'translate-x-0' : '-translate-x-full'}`}>
+                    <div className="p-5">
+                        <h1 className="text-2xl font-black tracking-tight flex items-center gap-2 text-white">
+                            <div className="w-4 h-4 bg-white border-2 border-transparent"></div>
+                            {t.appTitle}
+                            <span className="ml-2 text-[10px] leading-none px-1.5 py-1 rounded border border-white/30 text-white/60 font-mono select-none">v1.1</span>
+                        </h1>
+                    </div>
+                    <div className="px-4 flex gap-2 mb-4">
+                        <button onClick={onCreateSession} className="neu-btn flex-1 btn-pixel-block py-3 text-sm uppercase tracking-wider font-bold flex items-center justify-center">
+                            <div className="pixel-plus"></div>{t.newChat}
+                        </button>
+                        <button onClick={() => fileInputRef.current?.click()} className="neu-btn w-[20%] btn-pixel-outline py-3 flex items-center justify-center" title={t.import}>
+                           <Icons.Upload size={20} />
+                        </button>
+                        <input type="file" ref={fileInputRef} className="hidden" accept=".md" onChange={handleFileChange} />
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-3 custom-scroll">
+                        {sortedSessions.map(s => (
+                            <div key={s.id} 
+                                onClick={() => { setActiveId(s.id); if(window.innerWidth < 768) setShowSidebar(false); }} 
+                                className={`neu-btn w-full relative group justify-between px-4 py-3 rounded-lg text-left sidebar-btn flex items-center ${activeId === s.id ? 'session-item active' : ''}`}>
+                                
+                                {editingId === s.id ? (
+                                    <input ref={editInputRef} defaultValue={s.title} onClick={e => e.stopPropagation()} onBlur={e => handleFinishRename(s.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleFinishRename(s.id, e.currentTarget.value); if (e.key === 'Escape') setEditingId(null); }} className="truncate font-bold text-sm w-32 bg-transparent border-b border-white outline-none text-white"/>
+                                ) : (
+                                    <div className="flex items-center gap-2 overflow-hidden flex-1">
+                                        {s.isPinned && <Icons.PinSimple size={12} className="shrink-0 text-pixel-green" />}
+                                        <span className="truncate font-bold text-sm cursor-text" onDoubleClick={e => { e.stopPropagation(); setEditingId(s.id); }} title="Double click to rename">{s.title}</span>
+                                    </div>
+                                )}
+                                
+                                <button 
+                                    onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === s.id ? null : s.id); }} 
+                                    className={`p-1 hover:bg-white/10 rounded transition-opacity ${openMenuId === s.id ? 'opacity-100 text-white' : 'opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white'}`} 
+                                    style={{ opacity: (openMenuId === s.id || window.innerWidth < 768) ? 1 : undefined }} // Mobile friendly
+                                >
+                                    <Icons.More size={18}/>
+                                </button>
+
+                                {openMenuId === s.id && (
+                                    <div ref={menuRef} className="neu-context-menu" onClick={e => e.stopPropagation()}>
+                                        <div className="menu-item" onClick={() => { onTogglePin(s.id); setOpenMenuId(null); }}>
+                                            <Icons.PinSimple size={14}/> <span>{s.isPinned ? t.unpin : t.pin}</span>
+                                        </div>
+                                        <div className="menu-item" onClick={() => { setEditingId(s.id); setOpenMenuId(null); }}>
+                                            <Icons.Edit size={14}/> <span>{t.rename}</span>
+                                        </div>
+                                        <div className="menu-item danger" onClick={() => { onDeleteSession(s.id); setOpenMenuId(null); }}>
+                                            <Icons.Trash size={14}/> <span>{t.delete}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-4 relative flex items-center justify-between">
+                        <div>
+                            {showSettingsPopover && <SettingsPopover settings={settings} setSettings={setSettings} onClose={() => setShowSettingsPopover(false)} t={t} />}
+                            <button onClick={() => setShowSettingsPopover(!showSettingsPopover)} className="icon-btn-lite sidebar-footer-btn" title={t.settings}><Icons.Settings size={24}/></button>
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-600 dark:text-gray-500 tracking-widest opacity-60 select-none font-mono">
+                            © Betaproteinn
+                        </span>
+                    </div>
+                </div>
+            );
+        };
+
+        // 新增组件：独立的气泡组件，处理编辑逻辑
+        // 注意：现在 onRequestDelete 是当内容为空时调用
+        const MessageBubble = ({ message, onUpdate, onRequestDelete }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [text, setText] = useState(message.text);
+            const textareaRef = useRef(null);
+            const longPressTimer = useRef(null);
+            
+            useEffect(() => { setText(message.text); }, [message.text]);
+
+            useEffect(() => {
+                if (isEditing && textareaRef.current) {
+                    textareaRef.current.focus();
+                    textareaRef.current.style.height = 'auto';
+                    textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+                    textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
+                }
+            }, [isEditing]);
+
+            const handleSave = () => {
+                const trimmed = text.trim();
+                
+                if (trimmed === '') {
+                    // 内容为空 -> 恢复原状，然后请求删除（由 App 弹窗确认）
+                    setText(message.text); 
+                    setIsEditing(false);
+                    onRequestDelete(message.id);
+                } else if (trimmed !== message.text) {
+                    onUpdate(message.id, trimmed);
+                    setIsEditing(false);
+                } else {
+                    setIsEditing(false);
+                }
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    handleSave();
+                }
+                if (e.key === 'Escape') {
+                    setText(message.text);
+                    setIsEditing(false);
+                }
+            };
+
+            const startLongPress = () => {
+                longPressTimer.current = setTimeout(() => {
+                    setIsEditing(true);
+                    if (navigator.vibrate) navigator.vibrate(50);
+                }, 600);
+            };
+
+            const cancelLongPress = () => {
+                if (longPressTimer.current) {
+                    clearTimeout(longPressTimer.current);
+                    longPressTimer.current = null;
+                }
+            };
+
+            if (isEditing) {
+                return (
+                    <div className={`neu-bubble ${message.side === 'right' ? 'right' : 'left'} shadow-none w-full !p-0 overflow-hidden ring-2 ring-pixel-green ring-offset-2 ring-offset-transparent`}>
+                         <textarea
+                            ref={textareaRef}
+                            value={text}
+                            onChange={(e) => {
+                                setText(e.target.value);
+                                e.target.style.height = 'auto';
+                                e.target.style.height = e.target.scrollHeight + 'px';
+                            }}
+                            onBlur={handleSave}
+                            onKeyDown={handleKeyDown}
+                            className="w-full bg-transparent outline-none resize-none block font-inherit p-3 text-inherit"
+                            style={{ minHeight: '44px' }} 
+                            rows={1}
+                        />
+                    </div>
+                );
+            }
+
+            return (
+                <div
+                    className={`neu-bubble ${message.side === 'right' ? 'right' : 'left'} anim-bubble-pop shadow-none transition-opacity hover:opacity-90`}
+                    onDoubleClick={() => setIsEditing(true)}
+                    onTouchStart={startLongPress}
+                    onTouchEnd={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                    title="Double click to edit"
+                >
+                    <span className="text-content anim-text-step">
+                        {message.text}
+                    </span>
+                </div>
+            );
+        };
+
+        const ChatArea = ({ activeSession, onRename, mode, setMode, onExport, messages, onSendMessage, onUpdateMessage, onRequestDeleteMessage, side, setSide, setShowSidebar, t, settings }) => {
+            const [editingTitle, setEditingTitle] = useState(false);
+            const [showModeDropdown, setShowModeDropdown] = useState(false);
+            const [input, setInput] = useState('');
+            const titleInputRef = useRef(null);
+            const messagesEndRef = useRef(null);
+            const textareaRef = useRef(null);
+
+            useEffect(() => {
+                if (editingTitle && titleInputRef.current) { titleInputRef.current.focus(); titleInputRef.current.select(); }
+            }, [editingTitle]);
+
+            useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+            useEffect(() => { textareaRef.current?.focus(); }, [activeSession.id]);
+
+            const handleRename = (e) => {
+                const val = e.target.value.trim();
+                if (val) onRename(activeSession.id, val);
+                setEditingTitle(false);
+            };
+
+            const handleKeyDown = (e) => {
+                if ((settings.key === 'enter' && e.key === 'Enter' && !e.shiftKey) || (settings.key === 'ctrl_enter' && e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
+                    e.preventDefault();
+                    if (!input.trim()) return;
+                    onSendMessage(input, side);
+                    setInput('');
+                    if(textareaRef.current) textareaRef.current.style.height = 'auto';
+                    if (mode === 'auto') setSide(side === 'left' ? 'right' : 'left');
+                }
+                
+                if (mode === 'manual' && e.altKey) {
+                    if (e.key === 'ArrowLeft') {
+                        e.preventDefault();
+                        setSide('left');
+                    }
+                    if (e.key === 'ArrowRight') {
+                        e.preventDefault();
+                        setSide('right');
+                    }
+                }
+            };
+
+            const send = () => {
+                if (!input.trim()) return;
+                onSendMessage(input, side);
+                setInput('');
+                if(textareaRef.current) textareaRef.current.style.height = 'auto';
+                if (mode === 'auto') setSide(side === 'left' ? 'right' : 'left');
+            };
+
+            const handleInputChange = (e) => {
+                setInput(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+            };
+
+            return (
+                <div className="flex-1 flex flex-col h-full relative p-2 md:p-3 overflow-hidden">
+                    <div className="flex-1 flex flex-col bg-card-main border-2 border-black dark:border-white rounded-xl-card overflow-hidden shadow-2xl relative">
+                        <div className="h-16 flex items-center dark:border-white flex items-center justify-between px-6 z-10 shrink-0 bg-card-main">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setShowSidebar(true)} className="md:hidden icon-btn-lite"><Icons.Menu size={24}/></button>
+                                <div className="flex items-center gap-2 group min-w-[150px]">
+                                    {editingTitle ? (
+                                        <input ref={titleInputRef} defaultValue={activeSession.title} onBlur={handleRename} onKeyDown={(e) => e.key === 'Enter' && handleRename(e)} className="font-black text-lg md:text-xl bg-transparent border-b-2 border-black dark:border-white outline-none text-black dark:text-white w-full" />
+                                    ) : (
+                                        <div onDoubleClick={() => setEditingTitle(true)} className="font-normal text-lg md:text-xl truncate cursor-text hover:bg-gray-100 dark:hover:bg-gray-800 px-2 rounded -ml-2 transition-colors decoration-2 underline-offset-4 decoration-black dark:decoration-white select-none max-w-[200px] text-[#8A8A8A] dark:text-white" title="Double click to rename">{activeSession.title}</div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <ModeSelector mode={mode} setMode={setMode} isOpen={showModeDropdown} setIsOpen={setShowModeDropdown} t={t} />
+                                <button onClick={onExport} className="icon-btn-lite" title={t.export}><Icons.Download size={22}/></button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 neu-scroll">
+                            {messages.map(m => (
+                                <div key={m.id} className={`flex w-full ${m.side === 'right' ? 'justify-end' : 'justify-start'}`}>
+                                    <MessageBubble 
+                                        message={m} 
+                                        onUpdate={onUpdateMessage}
+                                        onRequestDelete={onRequestDeleteMessage}
+                                    />
+                                </div>
+                            ))}
+                            <div ref={messagesEndRef}/>
+                        </div>
+
+                        <div className="p-4 md:p-6 bg-transparent pointer-events-none">
+                            <div className="max-w-4xl mx-auto pointer-events-auto">
+                                <div className="flex justify-center mb-4">
+                                    <div className="neu-card p-1 rounded-full flex bg-white dark:bg-gray-800 scale-90 md:scale-100 border-2 border-black dark:border-white">
+                                        <button onClick={() => setSide('left')} className={`px-6 py-2 rounded-full font-bold text-sm transition-all border-0 ${side === 'left' ? 'bg-white text-black shadow-md border-2 border-black' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`} title="快捷键: Alt + ←">{t.left}</button>
+                                        <button onClick={() => setSide('right')} className={`px-6 py-2 rounded-full font-bold text-sm transition-all border-0 ${side === 'right' ? 'bg-theme-main text-theme-text shadow-md' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'}`} title="快捷键: Alt + →">{t.right}</button>
+                                    </div>
+                                </div>
+                                <div className="neu-input border-2 border-black dark:border-white rounded-[30px] p-2 flex items-end gap-2 bg-white dark:bg-gray-800">
+                                    <textarea ref={textareaRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown} placeholder={`${side === 'right' ? t.right : t.left}...`} className="w-full bg-transparent border-none outline-none p-3 max-h-32 min-h-[50px] resize-none text-black dark:text-white placeholder-gray-400 font-medium" rows={1} />
+                                    <button onClick={send} disabled={!input.trim()} className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border-2 border-black dark:border-white transition-colors ${input.trim() ? 'bg-theme-main text-theme-text' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}><Icons.Send size={20}/></button>
+                                </div>
+                                <div className="text-center mt-2">
+                                    {mode === 'auto' && <span className="inline-block bg-theme-main text-theme-text border-2 border-black px-2 py-0.5 text-xs font-bold rounded">AUTO MODE ACTIVE</span>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        function App() {
+            const makeId = () => (window.crypto && crypto.randomUUID)? crypto.randomUUID(): `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            const sanitizeFilename = (name) => {
+            const safe = String(name ?? '').trim() || 'Between'; 
+            return safe.replace(/[\\\/:*?"<>|]/g, '_').slice(0, 80);}
+            const [settings, setSettings] = useState(() => { try { return JSON.parse(localStorage.getItem('neu_settings')) || { theme: 'light', lang: 'zh', key: 'enter' }; } catch { return { theme: 'light', lang: 'zh', key: 'ctrl_enter' }; } });
+            const [sessions, setSessions] = useState(() => { try { const saved = JSON.parse(localStorage.getItem('neu_sessions')); return saved && saved.length > 0 ? saved : [{ id: Date.now(), title: 'Untitled_Session', messages: [], timestamp: Date.now() }]; } catch { return [{ id: Date.now(), title: 'Untitled_Session', messages: [], timestamp: Date.now() }]; } });
+            const [activeId, setActiveId] = useState(() => sessions[0].id);
+            const [side, setSide] = useState('right');
+            const [mode, setMode] = useState('manual');
+            const [showSidebar, setShowSidebar] = useState(false);
+            const [deleteTarget, setDeleteTarget] = useState(null); // 删除会话ID
+            const [msgToDelete, setMsgToDelete] = useState(null); // 新增：待删除的消息ID
+
+            const activeSession = useMemo(() => sessions.find(s => s.id === activeId) || sessions[0], [sessions, activeId]);
+            const t = DICT[settings.lang];
+
+            useEffect(() => { localStorage.setItem('neu_settings', JSON.stringify(settings)); }, [settings]);
+            useEffect(() => { localStorage.setItem('neu_sessions', JSON.stringify(sessions)); }, [sessions]);
+            useEffect(() => { if (settings.theme === 'dark') document.documentElement.classList.add('dark'); else document.documentElement.classList.remove('dark'); }, [settings.theme]);
+
+            const createSession = () => {
+                const newSession = { id: makeId(), title: 'New_Session', messages: [], timestamp: Date.now(), isPinned: false };
+                setSessions([newSession, ...sessions]);
+                setActiveId(newSession.id);
+                if (window.innerWidth < 768) setShowSidebar(false);
+            };
+
+            const togglePin = (id) => {
+                setSessions(prev => prev.map(s => s.id === id ? { ...s, isPinned: !s.isPinned } : s));
+            };
+
+            const confirmDeleteSession = () => {
+                if (!deleteTarget) return;
+                const newSessions = sessions.filter(s => s.id !== deleteTarget);
+                if (newSessions.length === 0) {
+                const fallback = { id: makeId(), title: 'New_Session', messages: [], timestamp: Date.now() };
+                setSessions([fallback]);
+                setActiveId(fallback.id);
+                } else {
+                setSessions(newSessions);
+                if (activeId === deleteTarget) setActiveId(newSessions[0].id);
+                }
+                 setDeleteTarget(null);
+            };
+
+            // 新增：确认删除单条消息
+            const confirmDeleteMessage = () => {
+                if (!msgToDelete) return;
+                setSessions(prev => prev.map(s => {
+                    if (s.id === activeId) {
+                        return { ...s, messages: s.messages.filter(m => m.id !== msgToDelete) };
+                    }
+                    return s;
+                }));
+                setMsgToDelete(null);
+            };
+
+            const renameSessionById = (id, newTitle) => {
+                setSessions(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
+            };
+
+            const sendMessage = (text, currentSide) => {
+                const newMessage = { id: makeId(), text, side: currentSide, timestamp: new Date().toISOString() };
+                setSessions(prev => prev.map(s => s.id === activeId ? { ...s, messages: [...s.messages, newMessage] } : s));
+            };
+
+            const updateMessageText = (messageId, newText) => {
+                setSessions(prev => prev.map(s => {
+                    if (s.id === activeId) {
+                        return {
+                            ...s,
+                            messages: s.messages.map(m => m.id === messageId ? { ...m, text: newText } : m)
+                        };
+                    }
+                    return s;
+                }));
+            };
+
+            const exportMarkdown = () => {
+                const header = `# ${activeSession.title}\n\n`;
+                const content = activeSession.messages.map(m => `## ${m.side === 'left' ? 'Left' : 'Right'}:\n${m.text}`).join('\n\n');
+                const blob = new Blob([header + content], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${sanitizeFilename(activeSession.title)}.md`;
+                a.click();
+            };
+
+            const importSession = (file) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const content = e.target.result;
+                    const fileName = file.name.replace(/\.md$/, '');
+                    const lines = content.split('\n');
+                    const messages = [];
+                    let currentSide = 'right'; 
+                    let currentText = [];
+                    const leftRegex = /^## (Left|左|Answer|Reply|回答|反馈|左脑).*/i; 
+                    const rightRegex = /^## (Right|右|Ask|Think|提问|思考|右脑).*/i;
+
+                    lines.forEach(line => {
+                        if (leftRegex.test(line)) {
+                            if (currentText.length > 0) {
+                                messages.push({ id: makeId(), text: currentText.join('\n').trim(), side: currentSide });
+                                currentText = [];
+                            }
+                            currentSide = 'left';
+                        } else if (rightRegex.test(line)) {
+                            if (currentText.length > 0) {
+                                messages.push({ id: makeId(), text: currentText.join('\n').trim(), side: currentSide });
+                                currentText = [];
+                            }
+                            currentSide = 'right';
+                        } else {
+                            if (!line.startsWith('# ')) currentText.push(line);
+                        }
+                    });
+                    
+                    if (currentText.length > 0) {
+                        messages.push({ id: makeId(), text: currentText.join('\n').trim(), side: currentSide });
+                    }
+
+                    const newSession = { id: makeId(), title: fileName, messages: messages };
+                    setSessions([newSession, ...sessions]);
+                    setActiveId(newSession.id);
+                    if (window.innerWidth < 768) setShowSidebar(false);
+                };
+                reader.readAsText(file);
+            };
+
+            return (
+                <div className="flex h-screen w-full items-center justify-center p-0">
+                    {/* 会话删除确认框 (保留原样) */}
+                    {deleteTarget && <DeleteModal onClose={() => setDeleteTarget(null)} onConfirm={confirmDeleteSession} t={t} />}
+                    
+                    {/* 消息删除确认框 (新增：专业极简风) */}
+                    {msgToDelete && (
+                        <ProfessionalModal 
+                            title={t.deleteMsgTitle}
+                            message={t.deleteMsgConfirm}
+                            confirmText={t.confirm}
+                            cancelText={t.cancel}
+                            isDanger={true}
+                            onCancel={() => setMsgToDelete(null)}
+                            onConfirm={confirmDeleteMessage}
+                        />
+                    )}
+
+                    <div className="w-full h-full flex flex-col md:flex-row overflow-hidden relative">
+                        <Sidebar 
+                            sessions={sessions} 
+                            activeId={activeId} 
+                            setActiveId={setActiveId} 
+                            onCreateSession={createSession} 
+                            onDeleteSession={setDeleteTarget} 
+                            onRenameSession={renameSessionById} 
+                            onImportSession={importSession}
+                            onTogglePin={togglePin}
+                            settings={settings} 
+                            setSettings={setSettings} 
+                            showSidebar={showSidebar} 
+                            setShowSidebar={setShowSidebar} 
+                            t={t} 
+                        />
+                        <ChatArea 
+                            activeSession={activeSession}
+                            messages={activeSession.messages}
+                            onRename={renameSessionById} 
+                            mode={mode}
+                            setMode={setMode}
+                            onExport={exportMarkdown}
+                            onSendMessage={sendMessage}
+                            onUpdateMessage={updateMessageText}
+                            onRequestDeleteMessage={setMsgToDelete}
+                            side={side}
+                            setSide={setSide}
+                            setShowSidebar={setShowSidebar}
+                            t={t}
+                            settings={settings}
+                        />
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
