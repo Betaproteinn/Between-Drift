@@ -19,7 +19,7 @@
 
 ## What this is
 
-Between Drift is a personal thinking tool prototype for exploring how reasoning shifts when perspective alternates over time.  
+Between Drift is a research-oriented cognitive tool prototype that explores how thinking shifts when perspectives change over time.
 Rather than sustaining a single line of thought, it focuses on how attention drifts between positions, questions, and responses.
 
 It is not meant to produce content, but to make directional change in thinking visible.
@@ -74,8 +74,9 @@ Open `index.html` locally in a browser.
 
 ## What this is
 
-Between Drift は、視点が時間の中で切り替わるときに、  
-思考がどのように偏移していくのかを探るための個人向け思考ツールの研究プロトタイプです。  
+Between Drift は、「視点が時間の中で切り替わるとき、
+思考がどのように偏移するか」を探るための、研究指向の思考支援プロトタイプです。
+  
 単一の思考を持続させるのではなく、立場・問い・応答の間で注意がどのように漂うかに着目しています。
 
 これは内容を生み出すためのものではなく、  
@@ -134,7 +135,7 @@ Between Drift は、こうした視点の移行を外在化し、
 
 ## What this is
 
-Between Drift 是一个用于探索“当视角在时间中发生切换时，思考如何发生偏移”的个人思维工具原型。  
+Between Drift 是一个用于探索“当视角在时间中发生切换时，思考如何发生偏移”的研究导向思维工具原型。
 与持续展开单一思路不同，它关注的是注意力如何在立场、问题与回应之间漂移。
 
 它不是为了产出内容，而是为了让思考中的转向变得可见。
